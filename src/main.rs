@@ -1,19 +1,12 @@
 use bevy::prelude::*;
-use bevy::sprite::*;
-use bevy::ui::*;
-use bevy::text::*;
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::Key;
-
-
-
-// ...your constants and components...
 
 const WINDOW_WIDTH: f32 = 1280.0;
 const WINDOW_HEIGHT: f32 = 720.0;
 
-const PADDLE_HEIGHT: f32 = 100.0;
-const PADDLE_WIDTH: f32 = 20.0;
+const PADDLE_HEIGHT: f32 = 20.0;
+const PADDLE_WIDTH: f32 = 100.0;
 const PADDLE_MARGIN: f32 = 30.0;
 
 const BALL_SIZE: f32 = 46.0;
@@ -44,15 +37,20 @@ struct Ball;
 #[derive(Component)]
 struct Velocity(Vec2);
 
+#[derive(Component)]
+struct Block;
+
+#[derive(Component)]
+struct Score;
+
+#[derive(Resource)]
+struct GameScore(u32);
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::srgb(0.13, 0.1, 0.2)))
-        .add_plugins((
-            DefaultPlugins,
-            SpritePlugin,
-            UiPlugin,
-            TextPlugin,
-        ))
+        .insert_resource(GameScore(0))
+        .add_plugins(DefaultPlugins)
         .insert_state(GameState::Splash)
         .add_systems(OnEnter(GameState::Splash), setup_splash)
         .add_systems(Update, start_button.run_if(in_state(GameState::Splash)))
@@ -69,114 +67,166 @@ fn main() {
 }
 
 fn setup_splash(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands
-        .spawn(SpriteBundle {
-            texture: asset_server.load("splash.jpg"),
-            transform: Transform::from_xyz(0.0, 0.0, 0.0),
-            ..Default::default()
-        })
-        .insert(SplashScreen);
+    // UI Camera for splash screen
+    commands.spawn((Camera2d, IsDefaultUiCamera));
 
-    commands
-        .spawn(NodeBundle {
-            style: Style {
-                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..Default::default()
-            },
-            ..Default::default()
-        })
-        .with_children(|parent| {
-            parent
-                .spawn((
-                    ButtonBundle {
-                        style: Style {
-                            size: Size::new(Val::Px(200.0), Val::Px(80.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..Default::default()
-                        },
-                        background_color: Color::srgb(0.25, 0.25, 0.85).into(),
-                        ..Default::default()
-                    },
-                    StartButton,
-                ))
-                .with_children(|parent| {
-                    parent.spawn(TextBundle::from_section(
-                        "Start",
-                        TextStyle {
-                            font: asset_server.load("FiraSans-Bold.ttf"),
-                            font_size: 40.0,
-                            color: Color::WHITE,
-                        },
-                    ));
-                });
-        });
+    // Splash image as background
+    commands.spawn((
+        Sprite {
+            image: asset_server.load("splash.png"),
+            custom_size: Some(Vec2::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        SplashScreen,
+    ));
+
+    // Start button - a large, visible colored rectangle
+    commands.spawn((
+        Sprite {
+            color: Color::srgb(0.25, 0.25, 0.85),
+            custom_size: Some(Vec2::new(300.0, 100.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, -100.0, 1.0),
+        Button,
+        StartButton,
+    ));
+
+    // Start button text
+    commands.spawn((
+        Text2d("Press Spacebar to Start".to_string()), // Changed text
+        Transform::from_xyz(0.0, -100.0, 2.0),
+        StartButton,
+    ));
 }
 
 fn start_button(
     mut interaction_query: Query<
-        (&Interaction, &mut BackgroundColor),
+        (&Interaction, &mut Sprite),
         (Changed<Interaction>, With<StartButton>),
     >,
+    input: Res<ButtonInput<Key>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut commands: Commands,
     splash_query: Query<Entity, With<SplashScreen>>,
-    button_parent_query: Query<Entity, With<NodeBundle>>,
+    button_query: Query<Entity, With<StartButton>>,
 ) {
-    for (interaction, mut color) in &mut interaction_query {
+    // Check for mouse interaction
+    for (interaction, mut sprite) in &mut interaction_query {
         match *interaction {
             Interaction::Pressed => {
+                println!("Button pressed! Starting game...");
                 for entity in &splash_query {
                     commands.entity(entity).despawn();
                 }
-                for entity in &button_parent_query {
+                for entity in &button_query {
                     commands.entity(entity).despawn();
                 }
                 next_state.set(GameState::Playing);
             }
             Interaction::Hovered => {
-                *color = Color::srgb(0.35, 0.35, 0.95).into();
+                sprite.color = Color::srgb(0.35, 0.35, 0.95);
             }
             Interaction::None => {
-                *color = Color::srgb(0.25, 0.25, 0.85).into();
+                sprite.color = Color::srgb(0.25, 0.25, 0.85);
             }
         }
+    }
+
+    // Check for keyboard input (spacebar)
+    if input.just_pressed(Key::Space) {
+        println!("Spacebar pressed! Starting game...");
+        for entity in &splash_query {
+            commands.entity(entity).despawn();
+        }
+        for entity in &button_query {
+            commands.entity(entity).despawn();
+        }
+        next_state.set(GameState::Playing);
     }
 }
 
 fn setup_game(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // Camera
-    commands.spawn(Camera2dBundle::default());
+    // Game Camera - removed to fix camera ambiguity
 
     // Paddle
     commands
-        .spawn(SpriteBundle {
-            transform: Transform::from_xyz(
-                0.0,
-                -WINDOW_HEIGHT / 2.0 + PADDLE_MARGIN + PADDLE_HEIGHT / 2.0,
-                0.0,
-            ),
-            sprite: Sprite {
+        .spawn((
+            Sprite {
                 color: Color::WHITE,
                 custom_size: Some(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
                 ..Default::default()
             },
-            ..Default::default()
-        })
-        .insert(Paddle);
+            Transform::from_xyz(
+                0.0,
+                -WINDOW_HEIGHT / 2.0 + PADDLE_MARGIN + PADDLE_HEIGHT / 2.0 + 100.0, // Moved up by 100 pixels
+                0.0,
+            ),
+            Paddle,
+        ));
 
     // Ferris Ball in center
     commands
-        .spawn(SpriteBundle {
-            texture: asset_server.load("ferris.png"),
-            transform: Transform::from_xyz(0.0, 0.0, 1.0)
-                .with_scale(Vec3::splat(BALL_SIZE / 400.0)),
-            ..Default::default()
-        })
-        .insert(Ball)
-        .insert(Velocity(Vec2::new(BALL_START_SPEED, BALL_START_SPEED)));
+        .spawn((
+            Sprite {
+                image: asset_server.load("ferris.png"),
+                custom_size: Some(Vec2::splat(BALL_SIZE)),
+                ..default()
+            },
+            Transform::from_xyz(0.0, 0.0, 1.0),
+            Ball,
+            Velocity(Vec2::new(BALL_START_SPEED, BALL_START_SPEED)),
+        ));
+
+    // Create 3 layers of blocks at the top
+    let block_width = 80.0;
+    let block_height = 20.0;
+    let blocks_per_row = (WINDOW_WIDTH / block_width) as i32;
+    let start_x = -(blocks_per_row as f32 * block_width) / 2.0 + block_width / 2.0;
+    
+    for layer in 0..3 {
+        let y_pos = WINDOW_HEIGHT / 2.0 - 50.0 - (layer as f32 * (block_height + 10.0));
+        for i in 0..blocks_per_row {
+            let x_pos = start_x + (i as f32 * block_width);
+            commands.spawn((
+                Sprite {
+                    color: Color::srgb(0.8, 0.2, 0.2),
+                    custom_size: Some(Vec2::new(block_width - 5.0, block_height)),
+                    ..default()
+                },
+                Transform::from_xyz(x_pos, y_pos, 0.0),
+                Block,
+            ));
+        }
+    }
+
+    // Score display
+    commands.spawn((
+        Text2d("Score: 0".to_string()),
+        Transform::from_xyz(-WINDOW_WIDTH / 2.0 + 100.0, WINDOW_HEIGHT / 2.0 - 50.0, 2.0),
+        Score,
+    ));
+
+    // Bottom wall to keep ball in play
+    commands.spawn((
+        Sprite {
+            color: Color::WHITE,
+            custom_size: Some(Vec2::new(WINDOW_WIDTH, 20.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, -WINDOW_HEIGHT / 2.0 + 10.0, 0.0),
+    ));
+
+    // Top wall to keep ball in play
+    commands.spawn((
+        Sprite {
+            color: Color::WHITE,
+            custom_size: Some(Vec2::new(WINDOW_WIDTH, 20.0)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, WINDOW_HEIGHT / 2.0 - 10.0, 0.0),
+    ));
 }
 
 fn paddle_movement_system(
@@ -214,57 +264,111 @@ fn ball_movement(
 
 fn ball_collision_system(
     mut ball_query: Query<(&mut Velocity, &mut Transform), With<Ball>>,
-    paddle_query: Query<&Transform, With<Paddle>>,
+    paddle_query: Query<&Transform, (With<Paddle>, Without<Ball>)>,
+    block_query: Query<(Entity, &Transform), (With<Block>, Without<Ball>)>,
+    mut commands: Commands,
+    mut score: ResMut<GameScore>,
+    mut score_text: Query<&mut Text2d, With<Score>>,
 ) {
-    let (mut velocity, mut transform) = match ball_query.single_mut() {
+    let (mut velocity, transform) = match ball_query.single_mut() {
         Ok(res) => res,
         Err(_) => return,
     };
 
+    // Wall bounce (left/right = no speed change)
     if transform.translation.x + BALL_SIZE / 2.0 > WINDOW_WIDTH / 2.0
         || transform.translation.x - BALL_SIZE / 2.0 < -WINDOW_WIDTH / 2.0
     {
         velocity.0.x = -velocity.0.x;
+        // No speed change for side walls
+    }
+
+    // Bottom wall bounce (far, slow down)
+    if transform.translation.y - BALL_SIZE / 2.0 < -WINDOW_HEIGHT / 2.0 {
+        velocity.0.y = velocity.0.y.abs();
         velocity.0 *= 0.9;
     }
 
+    // Top wall bounce (far, slow down)
     if transform.translation.y + BALL_SIZE / 2.0 > WINDOW_HEIGHT / 2.0 {
-        velocity.0.y = -velocity.0.y;
+        velocity.0.y = -velocity.0.y.abs();
         velocity.0 *= 0.9;
     }
 
-    // Paddle Collisions
+    // Paddle Collisions (close, speed up)
     for paddle_transform in paddle_query.iter() {
-        if collide(&transform, paddle_transform) {
-            velocity.0.x = -velocity.0.x;
-            velocity.0 *= 1.1;
-        }
-
         let paddle_pos = paddle_transform.translation;
+        
+        // Check if ball is hitting the paddle from above (moving down)
         if velocity.0.y < 0.0
             && transform.translation.y - BALL_SIZE / 2.0 <= paddle_pos.y + PADDLE_HEIGHT / 2.0
+            && transform.translation.y - BALL_SIZE / 2.0 >= paddle_pos.y - PADDLE_HEIGHT / 2.0
             && transform.translation.x + BALL_SIZE / 2.0 > paddle_pos.x - PADDLE_WIDTH / 2.0
             && transform.translation.x - BALL_SIZE / 2.0 < paddle_pos.x + PADDLE_WIDTH / 2.0
         {
             velocity.0.y = velocity.0.y.abs();
-            velocity.0 *= 1.1;
+            
+            // Check if ball hit the bottom half of the paddle (closer to player)
+            let ball_relative_y = transform.translation.y - paddle_pos.y;
+            if ball_relative_y < 0.0 {
+                // Bottom half of paddle - speed up twice as fast
+                velocity.0 *= 1.3;
+            } else {
+                // Top half of paddle - normal speed up
+                velocity.0 *= 1.15;
+            }
+        }
+        
+        // Check if ball is hitting the paddle from below (moving up)
+        if velocity.0.y > 0.0
+            && transform.translation.y + BALL_SIZE / 2.0 >= paddle_pos.y - PADDLE_HEIGHT / 2.0
+            && transform.translation.y + BALL_SIZE / 2.0 <= paddle_pos.y + PADDLE_HEIGHT / 2.0
+            && transform.translation.x + BALL_SIZE / 2.0 > paddle_pos.x - PADDLE_WIDTH / 2.0
+            && transform.translation.x - BALL_SIZE / 2.0 < paddle_pos.x + PADDLE_WIDTH / 2.0
+        {
+            velocity.0.y = -velocity.0.y.abs();
+            
+            // Check if ball hit the bottom half of the paddle (closer to player)
+            let ball_relative_y = transform.translation.y - paddle_pos.y;
+            if ball_relative_y < 0.0 {
+                // Bottom half of paddle - speed up twice as fast
+                velocity.0 *= 1.3;
+            } else {
+                // Top half of paddle - normal speed up
+                velocity.0 *= 1.15;
+            }
         }
     }
 
+    // Block Collisions
+    for (block_entity, block_transform) in block_query.iter() {
+        let block_pos = block_transform.translation;
+        let block_width = 75.0; // block_width - 5.0
+        let block_height = 20.0;
+        
+        if transform.translation.x + BALL_SIZE / 2.0 > block_pos.x - block_width / 2.0
+            && transform.translation.x - BALL_SIZE / 2.0 < block_pos.x + block_width / 2.0
+            && transform.translation.y + BALL_SIZE / 2.0 > block_pos.y - block_height / 2.0
+            && transform.translation.y - BALL_SIZE / 2.0 < block_pos.y + block_height / 2.0
+        {
+            // Remove the block
+            commands.entity(block_entity).despawn();
+            
+            // Update score
+            score.0 += 1;
+            
+            // Update score display
+            for mut text in score_text.iter_mut() {
+                *text = Text2d(format!("Score: {}", score.0));
+            }
+            
+            // Bounce the ball (reverse Y velocity)
+            velocity.0.y = -velocity.0.y;
+            velocity.0 *= 1.1; // Speed up when hitting blocks (more aggressive)
+        }
+    }
+
+    // Clamp speed
     let speed = velocity.0.length().clamp(BALL_START_SPEED, BALL_SPEED_MAX);
     velocity.0 = velocity.0.normalize() * speed;
-}
-
-fn collide(a: &Transform, b: &Transform) -> bool {
-    let a_half = Vec2::splat(BALL_SIZE / 2.0);
-    let b_half = Vec2::new(PADDLE_WIDTH / 2.0, PADDLE_HEIGHT / 2.0);
-
-    let a_center = Vec2::new(a.translation.x, a.translation.y);
-    let b_center = Vec2::new(b.translation.x, b.translation.y);
-
-    let delta = a_center - b_center;
-    let overlap_x = a_half.x + b_half.x - delta.x.abs();
-    let overlap_y = a_half.y + b_half.y - delta.y.abs();
-
-    overlap_x > 0.0 && overlap_y > 0.0
 }
