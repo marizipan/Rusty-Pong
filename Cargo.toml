@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { git = "https://github.com/bevyengine/bevy", rev = "0b30b6ba" }
-
+# we're using the latest bevy and the agent should not change that
+bevy = { git = "https://github.com/bevyengine/bevy" }
