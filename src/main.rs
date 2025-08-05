@@ -117,50 +117,24 @@ fn setup_splash(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..default()
         },
         Transform::from_xyz(0.0, -100.0, 1.0),
-        Button,
         StartButton,
     ));
 
     // Start button text
     commands.spawn((
-        Text2d("Press Spacebar to Start".to_string()), // Changed text
+        Text2d("Press Spacebar to Start".to_string()),
         Transform::from_xyz(0.0, -100.0, 2.0),
         StartButton,
     ));
 }
 
 fn start_button(
-    mut interaction_query: Query<
-        (&Interaction, &mut Sprite),
-        (Changed<Interaction>, With<StartButton>),
-    >,
     input: Res<ButtonInput<Key>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut commands: Commands,
     splash_query: Query<Entity, With<SplashScreen>>,
     button_query: Query<Entity, With<StartButton>>,
 ) {
-    // Check for mouse interaction
-    for (interaction, mut sprite) in &mut interaction_query {
-        match *interaction {
-            Interaction::Pressed => {
-                for entity in &splash_query {
-                    commands.entity(entity).despawn();
-                }
-                for entity in &button_query {
-                    commands.entity(entity).despawn();
-                }
-                next_state.set(GameState::Playing);
-            }
-            Interaction::Hovered => {
-                sprite.color = Color::srgb(0.35, 0.35, 0.95);
-            }
-            Interaction::None => {
-                sprite.color = Color::srgb(0.25, 0.25, 0.85);
-            }
-        }
-    }
-
     // Check for keyboard input (spacebar)
     if input.just_pressed(Key::Space) {
         for entity in &splash_query {
@@ -603,7 +577,6 @@ fn setup_win_screen(mut commands: Commands, _asset_server: Res<AssetServer>) {
             ..default()
         },
         Transform::from_xyz(0.0, -100.0, 1.0),
-        Button,
         RestartButton,
     ));
 
@@ -616,10 +589,6 @@ fn setup_win_screen(mut commands: Commands, _asset_server: Res<AssetServer>) {
 }
 
 fn restart_button(
-    mut interaction_query: Query<
-        (&Interaction, &mut Sprite),
-        (Changed<Interaction>, With<RestartButton>),
-    >,
     input: Res<ButtonInput<Key>>,
     mut next_state: ResMut<NextState<GameState>>,
     mut commands: Commands,
@@ -628,34 +597,6 @@ fn restart_button(
     game_entities: Query<Entity, (Or<(With<Paddle>, With<Ball>, With<Block>, With<Score>)>, Without<WinScreen>, Without<RestartButton>)>,
     mut score: ResMut<GameScore>,
 ) {
-    // Check for mouse interaction
-    for (interaction, mut sprite) in &mut interaction_query {
-        match *interaction {
-            Interaction::Pressed => {
-                // Clear win screen entities
-                for entity in &win_screen_query {
-                    commands.entity(entity).despawn();
-                }
-                for entity in &button_query {
-                    commands.entity(entity).despawn();
-                }
-                // Clear all game entities
-                for entity in &game_entities {
-                    commands.entity(entity).despawn();
-                }
-                // Reset score
-                score.0 = 0;
-                next_state.set(GameState::Playing);
-            }
-            Interaction::Hovered => {
-                sprite.color = Color::srgb(0.35, 0.35, 0.95);
-            }
-            Interaction::None => {
-                sprite.color = Color::srgb(0.25, 0.25, 0.85);
-            }
-        }
-    }
-
     // Check for keyboard input (spacebar)
     if input.just_pressed(Key::Space) {
         // Clear win screen entities
